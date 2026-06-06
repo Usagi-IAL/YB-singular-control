@@ -1,2 +1,3 @@
 # YB-singular-control
-Numarical Analysis
+Numerical SImulation
+pip install numpy matplotlib; python yb_simulation.py
