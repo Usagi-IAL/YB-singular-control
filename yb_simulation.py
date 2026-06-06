@@ -1,4 +1,4 @@
-"""
+    """
 Numerical simulation for:
   Wu, Lyuchengfei (2026).
   "Reconsidering the Dynamics of Division of Labor:
@@ -172,16 +172,36 @@ p_S = (r'$S_t = 1-k/n_t$',
 # ── Figure 1: Phi(n) and D(n) ─────────────────────────────────────────────────
 
 def figure_phi_D():
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ns = np.linspace(1.01, 100, 500)
-    a, k = 1.5, 0.6
-    Phi = np.array([phi(n, a, k) for n in ns])
-    Dv  = np.array([D_coeff(n, a, k) for n in ns])
-    ax.plot(ns, Phi, label=r'$\Phi(n)$')
-    ax.plot(ns, Dv,  label=r'$D(n)$')
-    ax.axhline(0, c='k', lw=0.7)
-    ax.set_xlabel('$n$'); ax.grid(alpha=0.3); ax.legend()
-    ax.set_title(f'$\\Phi(n)$ and $D(n)$; $a={a}$, $k={k}$')
+    """
+    Left panel : Phi(n) < 0 for all relevant (a,k) parameter combinations.
+    Right panel: D(n)  > 0 for the same combinations (Kelley condition).
+    """
+    ns = np.linspace(1.01, M, 600)
+    param_grid = [
+        (1.2, 0.3, '-',  'C0', r'$a=1.2,\,k=0.3$'),
+        (1.2, 0.8, '--', 'C0', r'$a=1.2,\,k=0.8$'),
+        (1.5, 0.3, '-',  'C1', r'$a=1.5,\,k=0.3$'),
+        (1.5, 0.8, '--', 'C1', r'$a=1.5,\,k=0.8$'),
+        (2.0, 0.3, '-',  'C2', r'$a=2.0,\,k=0.3$'),
+        (2.0, 0.8, '--', 'C2', r'$a=2.0,\,k=0.8$'),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+    for a, k, ls, c, lbl in param_grid:
+        Ph = np.array([phi(n, a, k) for n in ns])
+        Dv = np.array([D_coeff(n, a, k) for n in ns])
+        axes[0].plot(ns, Ph, ls=ls, c=c, lw=1.8, label=lbl)
+        axes[1].plot(ns, Dv, ls=ls, c=c, lw=1.8, label=lbl)
+    for ax, ylab, ttl in zip(
+            axes,
+            [r'$\Phi(n)$', r"$D(n)=\Phi^2+\Phi'-\Phi/m$"],
+            [r'$\Phi(n_t)<0$ for all relevant parameters',
+             r'$D(n_t)>0$ (Kelley condition holds)']):
+        ax.axhline(0, c='k', lw=0.8, ls=':')
+        ax.set_xlabel('$n$')
+        ax.set_ylabel(ylab)
+        ax.set_title(ttl, fontsize=9.5)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7.5, ncol=2)
     plt.tight_layout()
     plt.savefig('yb_phiD.png', dpi=140, bbox_inches='tight')
     plt.close()
@@ -270,25 +290,58 @@ make_k_figure()
 
 # ── Figure 5: T*(k, a) parameter space ────────────────────────────────────────
 
-def T_star(a, k, r):
-    """Time to full specialisation."""
-    ts, ns, _ = run(a, k, r, T=800.0)
+def T_star(a, k, r, T_max=800.0):
+    """Time to full specialisation; returns T_max if not reached."""
+    ts, ns, _ = run(a, k, r, T=T_max)
     idx = np.where(ns >= M - 0.1)[0]
-    return ts[idx[0]] if len(idx) else np.nan
+    return ts[idx[0]] if len(idx) else T_max
 
 
 def figure_Tstar():
-    ks = np.linspace(0.1, 0.9, 30)
-    a_vals = [1.1, 1.3, 1.5, 1.7]
+    """
+    Coloured heatmap of T*(k,a) for four values of r.
+    Bright (yellow) = fast specialisation; dark (purple) = slow / incomplete.
+    Cyan contours at T* in {50,75,100,150,200,250}.
+    White dashed line at a = 2.
+    Only cells where D(1;a,k) > 0 are plotted (Kelley condition guaranteed).
+    """
+    T_MAX = 350.0
+    N_K, N_A = 50, 50
+    ks = np.linspace(0.05, 0.95, N_K)
+    a_grid = np.linspace(1.05, 2.8, N_A)
     r_vals = [0.02, 0.05, 0.10, 0.20]
-    fig, axes = plt.subplots(1, 4, figsize=(14, 4.2))
+    contour_levels = [50, 75, 100, 150, 200, 250]
+
+    fig, axes = plt.subplots(1, 4, figsize=(15, 4.2))
+
     for ax, r in zip(axes, r_vals):
-        for av, (ls, c) in zip(a_vals, STYLES):
-            Ts = [T_star(av, k, r) for k in ks]
-            ax.plot(ks, Ts, ls=ls, c=c, lw=2, label=f'$a={av}$')
-        ax.set_xlabel('$k$'); ax.set_ylabel('$T^*$')
-        ax.set_title(f'$r={r}$'); ax.grid(alpha=0.3); ax.legend(fontsize=8.5)
-    fig.suptitle(r'$T^*(k,a)$ for four values of $r$', y=1.02, fontsize=10)
+        T_mat = np.full((N_A, N_K), np.nan)
+        for ia, a in enumerate(a_grid):
+            for ik, k in enumerate(ks):
+                # Only compute where Kelley condition D(1)>0
+                if D_coeff(1.01, a, k) > 0:
+                    Ts = T_star(a, k, r, T_max=T_MAX + 50)
+                    T_mat[ia, ik] = min(Ts, T_MAX) if not np.isnan(Ts) else T_MAX
+
+        im = ax.pcolormesh(ks, a_grid, T_mat,
+                           cmap='viridis_r', vmin=0, vmax=T_MAX,
+                           shading='auto')
+        # Cyan contours
+        valid = ~np.isnan(T_mat)
+        if valid.any():
+            ax.contour(ks, a_grid, np.where(valid, T_mat, T_MAX),
+                       levels=contour_levels,
+                       colors='cyan', linewidths=0.9, alpha=0.85)
+        # White dashed line at a = 2
+        ax.axhline(2.0, ls='--', c='white', lw=1.5)
+        plt.colorbar(im, ax=ax, label=r'$T^*$', fraction=0.046, pad=0.04)
+        ax.set_xlabel('$k$')
+        ax.set_ylabel('$a$')
+        ax.set_title(f'$r = {r}$', fontsize=10)
+
+    fig.suptitle(
+        r'Time $T^*$ to full specialization over $(k,a)$ parameter space',
+        y=1.02, fontsize=11)
     plt.tight_layout()
     plt.savefig('yb_Tstar.png', dpi=140, bbox_inches='tight')
     plt.close()
@@ -298,3 +351,5 @@ def figure_Tstar():
 figure_phi_D()
 figure_Tstar()
 print("All figures generated.")
+
+    
